@@ -10,7 +10,7 @@ from telegram.ext import (
 TOKEN = os.environ.get("BOT_TOKEN", "8810579160:AAF-YCvLwffW2Tx7dL-PuJ_PyVEhNbknIW0")
 DATA_FILE = "schedule_data.json"
 
-HOURS = [f"{9+i}:00\u2013{10+i}:00" for i in range(10)]
+HOURS = [f"{9+i}:00–{10+i}:00" for i in range(10)]
 DAY_SHORT = ["Пн","Вт","Ср","Чт","Пт","Сб","Нд"]
 DAY_FULL  = ["Понеділок","Вівторок","Середа","Четвер","П'ятниця","Субота","Неділя"]
 
@@ -32,111 +32,139 @@ def week_key(monday):
     return monday.strftime("week_%Y%m%d")
 
 def get_week_data(monday):
-    data = load_data()
-    return data.get(week_key(monday), {})
+    return load_data().get(week_key(monday), {})
 
 def set_cell(monday, day, hour, field, value):
     data = load_data()
     key = week_key(monday)
-    if key not in data:
-        data[key] = {}
+    if key not in data: data[key] = {}
     dk = f"d{day}"
     hk = f"h{hour}"
-    if dk not in data[key]:
-        data[key][dk] = {}
-    if hk not in data[key][dk]:
-        data[key][dk][hk] = {}
+    if dk not in data[key]: data[key][dk] = {}
+    if hk not in data[key][dk]: data[key][dk][hk] = {}
     if value:
         data[key][dk][hk][field] = value
     else:
         data[key][dk][hk].pop(field, None)
     save_data(data)
 
-def format_schedule(monday, week_label):
+def get_monday_by_week(week):
+    today = datetime.now()
+    monday = get_monday(today)
+    if week == "next":
+        monday += timedelta(weeks=1)
+    return monday
+
+def build_day_view(week, day_idx):
+    """Будує текст і клавіатуру для одного дня"""
+    monday = get_monday_by_week(week)
+    day_date = monday + timedelta(days=day_idx)
     wd = get_week_data(monday)
-    today_str = datetime.now().strftime("%d.%m")
-    end = monday + timedelta(days=6)
-    lines = [
-        f"📋 Графік служіння — {week_label}",
-        f"{monday.strftime('%d.%m')} – {end.strftime('%d.%m')}",
-        ""
-    ]
-    for di in range(7):
-        day_date = monday + timedelta(days=di)
-        date_str = day_date.strftime("%d.%m")
-        prefix = "👉 " if date_str == today_str else ""
-        lines.append(f"{prefix}{DAY_SHORT[di]} {date_str} — {DAY_FULL[di]}")
-        day_data = wd.get(f"d{di}", {})
-        has = False
-        for hi in range(10):
-            cell = day_data.get(f"h{hi}", {})
-            r = cell.get("r", "")
-            p = cell.get("p", "")
-            if r or p:
-                has = True
-                lines.append(f"  {HOURS[hi]}:  {r or '___'} / {p or '___'}")
-        if not has:
-            lines.append("  — порожньо —")
-        lines.append("")
-    return "\n".join(lines)
+    day_data = wd.get(f"d{day_idx}", {})
+
+    today = datetime.now()
+    is_today = day_date.date() == today.date()
+    week_label = "Цей тиждень" if week == "this" else "Наступний тиждень"
+
+    # Текст повідомлення
+    header = f"{'👉 ' if is_today else ''}📅 {DAY_FULL[day_idx]}, {day_date.strftime('%d.%m')}\n{week_label}\n"
+    lines = [header]
+
+    for hi in range(10):
+        cell = day_data.get(f"h{hi}", {})
+        r = cell.get("r", "")
+        p = cell.get("p", "")
+        r_str = f"👤 {r}" if r else "👤 —"
+        p_str = f"👥 {p}" if p else "👥 —"
+        lines.append(f"`{HOURS[hi]}`")
+        lines.append(f"  {r_str}   {p_str}")
+
+    text = "\n".join(lines)
+
+    # Клавіатура
+    buttons = []
+
+    for hi in range(10):
+        cell = day_data.get(f"h{hi}", {})
+        r = cell.get("r", "")
+        p = cell.get("p", "")
+
+        row = []
+        # Відповідальний
+        if r:
+            row.append(InlineKeyboardButton(
+                f"✕ {r[:12]} (відп.)",
+                callback_data=f"del|{week}|{day_idx}|{hi}|r"
+            ))
+        else:
+            row.append(InlineKeyboardButton(
+                f"+ Відп. {HOURS[hi]}",
+                callback_data=f"add|{week}|{day_idx}|{hi}|r"
+            ))
+
+        # Напарник
+        if p:
+            row.append(InlineKeyboardButton(
+                f"✕ {p[:12]} (нап.)",
+                callback_data=f"del|{week}|{day_idx}|{hi}|p"
+            ))
+        else:
+            row.append(InlineKeyboardButton(
+                f"+ Напарник {HOURS[hi]}",
+                callback_data=f"add|{week}|{day_idx}|{hi}|p"
+            ))
+
+        buttons.append(row)
+
+    # Навігація між днями
+    nav = []
+    if day_idx > 0:
+        nav.append(InlineKeyboardButton(
+            f"◀ {DAY_SHORT[day_idx-1]}",
+            callback_data=f"day|{week}|{day_idx-1}"
+        ))
+    else:
+        nav.append(InlineKeyboardButton(" ", callback_data="noop"))
+
+    if day_idx < 6:
+        nav.append(InlineKeyboardButton(
+            f"{DAY_SHORT[day_idx+1]} ▶",
+            callback_data=f"day|{week}|{day_idx+1}"
+        ))
+    else:
+        nav.append(InlineKeyboardButton(" ", callback_data="noop"))
+
+    buttons.append(nav)
+
+    # Перемикач тижнів
+    if week == "this":
+        buttons.append([InlineKeyboardButton(
+            "📆 Наступний тиждень →",
+            callback_data=f"day|next|{day_idx}"
+        )])
+    else:
+        buttons.append([InlineKeyboardButton(
+            "← 📅 Цей тиждень",
+            callback_data=f"day|this|{day_idx}"
+        )])
+
+    buttons.append([InlineKeyboardButton("🏠 Меню", callback_data="main")])
+
+    return text, InlineKeyboardMarkup(buttons)
 
 def main_kb():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📅 Цей тиждень", callback_data="view_this"),
-         InlineKeyboardButton("📆 Наступний", callback_data="view_next")],
-        [InlineKeyboardButton("✏️ Записатись", callback_data="act_signup"),
-         InlineKeyboardButton("❌ Відписатись", callback_data="act_signoff")],
-    ])
-
-def week_kb(action):
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("Цей тиждень", callback_data=f"{action}|this"),
-         InlineKeyboardButton("Наступний", callback_data=f"{action}|next")],
-        [InlineKeyboardButton("« Назад", callback_data="main")],
-    ])
-
-def day_kb(action, week):
     today = datetime.now()
-    monday = get_monday(today) if week == "this" else get_monday(today) + timedelta(weeks=1)
-    buttons = []
-    row = []
-    for di in range(7):
-        d = monday + timedelta(days=di)
-        row.append(InlineKeyboardButton(
-            f"{DAY_SHORT[di]} {d.strftime('%d.%m')}",
-            callback_data=f"{action}|{week}|{di}"
-        ))
-        if len(row) == 2:
-            buttons.append(row); row = []
-    if row: buttons.append(row)
-    buttons.append([InlineKeyboardButton("« Назад", callback_data=f"act_{action}")])
-    return InlineKeyboardMarkup(buttons)
-
-def hour_kb(action, week, day):
-    buttons = []
-    row = []
-    for hi in range(10):
-        row.append(InlineKeyboardButton(
-            HOURS[hi],
-            callback_data=f"{action}|{week}|{day}|{hi}"
-        ))
-        if len(row) == 2:
-            buttons.append(row); row = []
-    if row: buttons.append(row)
-    buttons.append([InlineKeyboardButton("« Назад", callback_data=f"{action}|{week}")])
-    return InlineKeyboardMarkup(buttons)
-
-def field_kb(action, week, day, hour):
+    di = today.weekday()  # поточний день тижня
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("👤 Відповідальний", callback_data=f"{action}|{week}|{day}|{hour}|r"),
-         InlineKeyboardButton("👥 Напарник",       callback_data=f"{action}|{week}|{day}|{hour}|p")],
-        [InlineKeyboardButton("« Назад", callback_data=f"{action}|{week}|{day}")],
+        [InlineKeyboardButton("📅 Відкрити графік", callback_data=f"day|this|{di}")],
+        [InlineKeyboardButton("📆 Наступний тиждень", callback_data=f"day|next|0")],
     ])
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = update.effective_user.first_name
     await update.message.reply_text(
-        f"Привіт, {name}! 👋\nЯ бот для графіку служіння зі стендом.\nОберіть дію:",
+        f"Привіт, {name}! 👋\n\nЯ бот для графіку служіння зі стендом.\n"
+        f"Тут можна бачити хто вже записаний і записатись самому.",
         reply_markup=main_kb()
     )
 
@@ -144,96 +172,52 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
     d = q.data
+
+    if d == "noop":
+        return
+
+    if d == "main":
+        await q.edit_message_text(
+            "Оберіть дію:",
+            reply_markup=main_kb()
+        )
+        return
+
     parts = d.split("|")
 
-    # Головне меню
-    if d == "main":
-        await q.edit_message_text("Оберіть дію:", reply_markup=main_kb())
+    # Відкрити день
+    if parts[0] == "day":
+        _, week, day = parts
+        text, kb = build_day_view(week, int(day))
+        await q.edit_message_text(text, parse_mode="Markdown", reply_markup=kb)
         return
 
-    # Перегляд
-    if d == "view_this":
-        monday = get_monday(datetime.now())
+    # Видалити запис
+    if parts[0] == "del":
+        _, week, day, hour, field = parts
+        monday = get_monday_by_week(week)
+        set_cell(monday, int(day), int(hour), field, "")
+        text, kb = build_day_view(week, int(day))
+        await q.edit_message_text(text, parse_mode="Markdown", reply_markup=kb)
+        return
+
+    # Додати запис
+    if parts[0] == "add":
+        _, week, day, hour, field = parts
+        field_name = "відповідального" if field == "r" else "напарника"
+        context.user_data["pending"] = {
+            "week": week, "day": int(day),
+            "hour": int(hour), "field": field
+        }
+        day_i = int(day)
+        monday = get_monday_by_week(week)
+        day_date = (monday + timedelta(days=day_i)).strftime("%d.%m")
         await q.edit_message_text(
-            format_schedule(monday, "Цей тиждень"),
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("« Назад", callback_data="main")]])
+            f"✏️ Введіть прізвище {field_name}:\n"
+            f"{DAY_FULL[day_i]}, {day_date}, {HOURS[int(hour)]}\n\n"
+            f"Просто напишіть прізвище у чат:"
         )
         return
-
-    if d == "view_next":
-        monday = get_monday(datetime.now()) + timedelta(weeks=1)
-        await q.edit_message_text(
-            format_schedule(monday, "Наступний тиждень"),
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("« Назад", callback_data="main")]])
-        )
-        return
-
-    # Вибір дії
-    if d == "act_signup":
-        await q.edit_message_text("✏️ Записатись\nОберіть тиждень:", reply_markup=week_kb("signup"))
-        return
-
-    if d == "act_signoff":
-        await q.edit_message_text("❌ Відписатись\nОберіть тиждень:", reply_markup=week_kb("signoff"))
-        return
-
-    # signup|week або signoff|week
-    if len(parts) == 2:
-        action, week = parts
-        if action in ("signup", "signoff"):
-            today = datetime.now()
-            monday = get_monday(today) if week == "this" else get_monday(today) + timedelta(weeks=1)
-            await q.edit_message_text(
-                "📅 Оберіть день:",
-                reply_markup=day_kb(action, week)
-            )
-            return
-
-    # signup|week|day або signoff|week|day
-    if len(parts) == 3:
-        action, week, day = parts
-        if action in ("signup", "signoff"):
-            await q.edit_message_text(
-                f"🕐 Оберіть час ({DAY_FULL[int(day)]}):",
-                reply_markup=hour_kb(action, week, int(day))
-            )
-            return
-
-    # signup|week|day|hour або signoff|week|day|hour
-    if len(parts) == 4:
-        action, week, day, hour = parts
-        if action in ("signup", "signoff"):
-            await q.edit_message_text(
-                f"Оберіть роль:\n{DAY_FULL[int(day)]}, {HOURS[int(hour)]}",
-                reply_markup=field_kb(action, week, int(day), int(hour))
-            )
-            return
-
-    # signup|week|day|hour|field
-    if len(parts) == 5:
-        action, week, day, hour, field = parts
-        day = int(day); hour = int(hour)
-        today = datetime.now()
-        monday = get_monday(today) if week == "this" else get_monday(today) + timedelta(weeks=1)
-        field_name = "Відповідальний" if field == "r" else "Напарник"
-
-        if action == "signoff":
-            set_cell(monday, day, hour, field, "")
-            await q.edit_message_text(
-                f"✅ Запис видалено!\n{DAY_FULL[day]}, {HOURS[hour]}, {field_name}",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("« Меню", callback_data="main")]])
-            )
-            return
-
-        if action == "signup":
-            context.user_data["pending"] = {
-                "week": week, "day": day, "hour": hour, "field": field,
-                "monday": monday.isoformat()
-            }
-            await q.edit_message_text(
-                f"✏️ Введіть своє прізвище:\n{DAY_FULL[day]}, {HOURS[hour]}, {field_name}\n\nПросто напишіть прізвище:"
-            )
-            return
 
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pending = context.user_data.get("pending")
@@ -246,23 +230,27 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Введіть коректне прізвище (мінімум 2 символи):")
         return
 
-    day = pending["day"]; hour = pending["hour"]; field = pending["field"]
-    monday = datetime.fromisoformat(pending["monday"])
-    field_name = "Відповідальний" if field == "r" else "Напарник"
+    week = pending["week"]
+    day = pending["day"]
+    hour = pending["hour"]
+    field = pending["field"]
+    monday = get_monday_by_week(week)
     set_cell(monday, day, hour, field, name)
     context.user_data.pop("pending", None)
 
+    field_name = "Відповідальний" if field == "r" else "Напарник"
+    text, kb = build_day_view(week, day)
     await update.message.reply_text(
-        f"✅ Записано!\n{DAY_FULL[day]}, {HOURS[hour]}\n{field_name}: {name}",
-        reply_markup=main_kb()
+        f"✅ {field_name}: {name} — записано!\n\n" + text,
+        parse_mode="Markdown",
+        reply_markup=kb
     )
 
 async def schedule_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    monday = get_monday(datetime.now())
-    await update.message.reply_text(
-        format_schedule(monday, "Цей тиждень"),
-        reply_markup=main_kb()
-    )
+    today = datetime.now()
+    di = today.weekday()
+    text, kb = build_day_view("this", di)
+    await update.message.reply_text(text, parse_mode="Markdown", reply_markup=kb)
 
 def main():
     app = Application.builder().token(TOKEN).build()
