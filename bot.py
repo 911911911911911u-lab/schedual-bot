@@ -11,6 +11,7 @@ TOKEN = os.environ.get("BOT_TOKEN", "8810579160:AAF-YCvLwffW2Tx7dL-PuJ_PyVEhNbkn
 DATA_FILE = "schedule_data.json"
 
 HOURS = [f"{9+i}:00–{10+i}:00" for i in range(10)]
+HOURS_SHORT = [f"{9+i}-{10+i}" for i in range(10)]
 DAY_SHORT = ["Пн","Вт","Ср","Чт","Пт","Сб","Нд"]
 DAY_FULL  = ["Понеділок","Вівторок","Середа","Четвер","П'ятниця","Субота","Неділя"]
 
@@ -56,12 +57,59 @@ def get_monday_by_week(week):
     return monday
 
 def is_past_day(week, day_idx):
-    """Повертає True якщо день вже пройшов (не сьогодні і не майбутній)"""
     if week == "next":
         return False
     monday = get_monday_by_week(week)
     day_date = (monday + timedelta(days=day_idx)).date()
     return day_date < datetime.now().date()
+
+def build_week_overview(week):
+    """Компактний огляд всього тижня"""
+    monday = get_monday_by_week(week)
+    wd = get_week_data(monday)
+    today = datetime.now().date()
+    week_label = "Цей тиждень" if week == "this" else "Наступний тиждень"
+    end = monday + timedelta(days=6)
+
+    lines = [
+        f"📋 {week_label}",
+        f"{monday.strftime('%d.%m')} – {end.strftime('%d.%m')}",
+        "─────────────────"
+    ]
+
+    for di in range(7):
+        day_date = monday + timedelta(days=di)
+        is_today = day_date.date() == today
+        is_past = day_date.date() < today
+        day_data = wd.get(f"d{di}", {})
+
+        prefix = "👉" if is_today else ("🔒" if is_past else "📌")
+        lines.append(f"\n{prefix} {DAY_SHORT[di]} {day_date.strftime('%d.%m')}")
+
+        has_any = False
+        free_hours = []
+
+        for hi in range(10):
+            cell = day_data.get(f"h{hi}", {})
+            r = cell.get("r", "")
+            p = cell.get("p", "")
+            if r or p:
+                has_any = True
+                r_str = r if r else "·"
+                p_str = p if p else "·"
+                lines.append(f"  {HOURS_SHORT[hi]}: {r_str} / {p_str}")
+            else:
+                free_hours.append(HOURS_SHORT[hi])
+
+        if not has_any:
+            lines.append("  — нікого не записано —")
+
+        if free_hours and not is_past:
+            free_str = ", ".join(free_hours)
+            lines.append(f"  ⬜ Вільно: {free_str}")
+
+    lines.append("\n─────────────────")
+    return "\n".join(lines)
 
 def build_day_view(week, day_idx):
     monday = get_monday_by_week(week)
@@ -85,7 +133,6 @@ def build_day_view(week, day_idx):
         r = cell.get("r", "")
         p = cell.get("p", "")
 
-        # Рядок з часом
         buttons.append([InlineKeyboardButton(
             f"🕐 {HOURS[hi]}",
             callback_data="noop"
@@ -93,38 +140,23 @@ def build_day_view(week, day_idx):
 
         row = []
         if past:
-            # Минулий день — тільки перегляд, без кнопок дії
             r_btn = f"🔴 {r[:16]}" if r else "⬜ вільно"
             p_btn = f"🔴 {p[:16]}" if p else "⬜ вільно"
             row.append(InlineKeyboardButton(r_btn, callback_data="noop"))
             row.append(InlineKeyboardButton(p_btn, callback_data="noop"))
         else:
-            # Активний день — можна записатись/видалити
             if r:
-                row.append(InlineKeyboardButton(
-                    f"✕ 🔴 {r[:14]}",
-                    callback_data=f"del|{week}|{day_idx}|{hi}|r"
-                ))
+                row.append(InlineKeyboardButton(f"✕ 🔴 {r[:14]}", callback_data=f"del|{week}|{day_idx}|{hi}|r"))
             else:
-                row.append(InlineKeyboardButton(
-                    "✅ + Відповідальний",
-                    callback_data=f"add|{week}|{day_idx}|{hi}|r"
-                ))
+                row.append(InlineKeyboardButton("✅ + Відповідальний", callback_data=f"add|{week}|{day_idx}|{hi}|r"))
 
             if p:
-                row.append(InlineKeyboardButton(
-                    f"✕ 🔴 {p[:14]}",
-                    callback_data=f"del|{week}|{day_idx}|{hi}|p"
-                ))
+                row.append(InlineKeyboardButton(f"✕ 🔴 {p[:14]}", callback_data=f"del|{week}|{day_idx}|{hi}|p"))
             else:
-                row.append(InlineKeyboardButton(
-                    "✅ + Напарник",
-                    callback_data=f"add|{week}|{day_idx}|{hi}|p"
-                ))
+                row.append(InlineKeyboardButton("✅ + Напарник", callback_data=f"add|{week}|{day_idx}|{hi}|p"))
 
         buttons.append(row)
 
-    # Навігація між днями
     nav = []
     if day_idx > 0:
         nav.append(InlineKeyboardButton(f"◀ {DAY_SHORT[day_idx-1]}", callback_data=f"day|{week}|{day_idx-1}"))
@@ -150,8 +182,10 @@ def build_day_view(week, day_idx):
 def main_kb():
     di = datetime.now().weekday()
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📅 Відкрити графік (цей тиждень)", callback_data=f"day|this|{di}")],
-        [InlineKeyboardButton("📆 Наступний тиждень", callback_data="day|next|0")],
+        [InlineKeyboardButton("📅 Графік — цей тиждень", callback_data=f"day|this|{di}")],
+        [InlineKeyboardButton("📆 Графік — наступний тиждень", callback_data="day|next|0")],
+        [InlineKeyboardButton("📋 Огляд цього тижня", callback_data="overview|this")],
+        [InlineKeyboardButton("📋 Огляд наступного тижня", callback_data="overview|next")],
     ])
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -177,6 +211,17 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     parts = d.split("|")
+
+    # Огляд тижня
+    if parts[0] == "overview":
+        week = parts[1]
+        text = build_week_overview(week)
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📅 Відкрити графік", callback_data=f"day|{week}|{datetime.now().weekday()}")],
+            [InlineKeyboardButton("🏠 Меню", callback_data="main")]
+        ])
+        await q.edit_message_text(text, reply_markup=kb)
+        return
 
     if parts[0] == "day":
         _, week, day = parts
