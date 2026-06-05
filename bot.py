@@ -65,58 +65,51 @@ def build_day_view(week, day_idx):
     is_today = day_date.date() == today.date()
     week_label = "Цей тиждень" if week == "this" else "Наступний тиждень"
 
-    header = f"{'👉 ' if is_today else ''}📅 {DAY_FULL[day_idx]}, {day_date.strftime('%d.%m')}\n{week_label}\n\n"
-    lines = [header]
+    # Заголовок — тільки один рядок тексту
+    prefix = "👉 " if is_today else ""
+    text = f"{prefix}📅 {DAY_FULL[day_idx]}, {day_date.strftime('%d.%m')}  |  {week_label}"
 
-    for hi in range(10):
-        cell = day_data.get(f"h{hi}", {})
-        r = cell.get("r", "")
-        p = cell.get("p", "")
-
-        r_str = f"🔴 {r}" if r else "⬜ вільно"
-        p_str = f"🔴 {p}" if p else "⬜ вільно"
-
-        lines.append(
-            f"🕐 {HOURS[hi]}\n"
-            f"  👤 Відп.: {r_str}\n"
-            f"  👥 Напарник: {p_str}\n"
-        )
-
-    text = "\n".join(lines)
-
-    # Клавіатура
+    # Кнопки
     buttons = []
+
     for hi in range(10):
         cell = day_data.get(f"h{hi}", {})
         r = cell.get("r", "")
         p = cell.get("p", "")
-        row = []
 
+        # Рядок з часом
+        buttons.append([InlineKeyboardButton(
+            f"🕐 {HOURS[hi]}",
+            callback_data="noop"
+        )])
+
+        # Відповідальний і напарник
+        row = []
         if r:
             row.append(InlineKeyboardButton(
-                f"✕ 🔴{r[:10]} (відп.)",
+                f"✕ 🔴 {r[:14]}",
                 callback_data=f"del|{week}|{day_idx}|{hi}|r"
             ))
         else:
             row.append(InlineKeyboardButton(
-                f"✅ + Відп. {9+hi}:00",
+                "✅ + Відповідальний",
                 callback_data=f"add|{week}|{day_idx}|{hi}|r"
             ))
 
         if p:
             row.append(InlineKeyboardButton(
-                f"✕ 🔴{p[:10]} (нап.)",
+                f"✕ 🔴 {p[:14]}",
                 callback_data=f"del|{week}|{day_idx}|{hi}|p"
             ))
         else:
             row.append(InlineKeyboardButton(
-                f"✅ + Напарник {9+hi}:00",
+                "✅ + Напарник",
                 callback_data=f"add|{week}|{day_idx}|{hi}|p"
             ))
 
         buttons.append(row)
 
-    # Навігація
+    # Навігація між днями
     nav = []
     if day_idx > 0:
         nav.append(InlineKeyboardButton(f"◀ {DAY_SHORT[day_idx-1]}", callback_data=f"day|{week}|{day_idx-1}"))
@@ -150,8 +143,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = update.effective_user.first_name
     await update.message.reply_text(
         f"Привіт, {name}! 👋\n\n"
-        f"Я бот для графіку служіння зі стендом.\n"
-        f"🔴 — зайнято   ⬜ — вільно   ✅ — записатись   ✕ — видалити",
+        f"Бот для графіку служіння зі стендом.\n"
+        f"🔴 — зайнято   ✅ — вільно (натисни щоб записатись)   ✕ — видалити",
         reply_markup=main_kb()
     )
 
@@ -195,9 +188,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         day_date = (monday + timedelta(days=day_i)).strftime("%d.%m")
         await q.edit_message_text(
             f"✏️ Введіть прізвище {field_name}:\n"
-            f"📅 {DAY_FULL[day_i]}, {day_date}\n"
-            f"🕐 {HOURS[int(hour)]}\n\n"
-            f"Просто напишіть прізвище у чат:"
+            f"📅 {DAY_FULL[day_i]}, {day_date} — 🕐 {HOURS[int(hour)]}\n\n"
+            f"Напишіть прізвище у чат:"
         )
         return
 
@@ -223,7 +215,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     field_name = "Відповідальний" if field == "r" else "Напарник"
     text, kb = build_day_view(week, day)
     await update.message.reply_text(
-        f"✅ {field_name}: 🔴 {name} — записано!\n\n" + text,
+        f"✅ {field_name}: 🔴 {name} — записано!",
         reply_markup=kb
     )
 
