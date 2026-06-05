@@ -55,6 +55,14 @@ def get_monday_by_week(week):
         monday += timedelta(weeks=1)
     return monday
 
+def is_past_day(week, day_idx):
+    """Повертає True якщо день вже пройшов (не сьогодні і не майбутній)"""
+    if week == "next":
+        return False
+    monday = get_monday_by_week(week)
+    day_date = (monday + timedelta(days=day_idx)).date()
+    return day_date < datetime.now().date()
+
 def build_day_view(week, day_idx):
     monday = get_monday_by_week(week)
     day_date = monday + timedelta(days=day_idx)
@@ -63,13 +71,13 @@ def build_day_view(week, day_idx):
 
     today = datetime.now()
     is_today = day_date.date() == today.date()
+    past = is_past_day(week, day_idx)
     week_label = "Цей тиждень" if week == "this" else "Наступний тиждень"
 
-    # Заголовок — тільки один рядок тексту
-    prefix = "👉 " if is_today else ""
-    text = f"{prefix}📅 {DAY_FULL[day_idx]}, {day_date.strftime('%d.%m')}  |  {week_label}"
+    prefix = "👉 " if is_today else ("🔒 " if past else "")
+    past_note = "  (архів)" if past else ""
+    text = f"{prefix}📅 {DAY_FULL[day_idx]}, {day_date.strftime('%d.%m')}  |  {week_label}{past_note}"
 
-    # Кнопки
     buttons = []
 
     for hi in range(10):
@@ -83,29 +91,36 @@ def build_day_view(week, day_idx):
             callback_data="noop"
         )])
 
-        # Відповідальний і напарник
         row = []
-        if r:
-            row.append(InlineKeyboardButton(
-                f"✕ 🔴 {r[:14]}",
-                callback_data=f"del|{week}|{day_idx}|{hi}|r"
-            ))
+        if past:
+            # Минулий день — тільки перегляд, без кнопок дії
+            r_btn = f"🔴 {r[:16]}" if r else "⬜ вільно"
+            p_btn = f"🔴 {p[:16]}" if p else "⬜ вільно"
+            row.append(InlineKeyboardButton(r_btn, callback_data="noop"))
+            row.append(InlineKeyboardButton(p_btn, callback_data="noop"))
         else:
-            row.append(InlineKeyboardButton(
-                "✅ + Відповідальний",
-                callback_data=f"add|{week}|{day_idx}|{hi}|r"
-            ))
+            # Активний день — можна записатись/видалити
+            if r:
+                row.append(InlineKeyboardButton(
+                    f"✕ 🔴 {r[:14]}",
+                    callback_data=f"del|{week}|{day_idx}|{hi}|r"
+                ))
+            else:
+                row.append(InlineKeyboardButton(
+                    "✅ + Відповідальний",
+                    callback_data=f"add|{week}|{day_idx}|{hi}|r"
+                ))
 
-        if p:
-            row.append(InlineKeyboardButton(
-                f"✕ 🔴 {p[:14]}",
-                callback_data=f"del|{week}|{day_idx}|{hi}|p"
-            ))
-        else:
-            row.append(InlineKeyboardButton(
-                "✅ + Напарник",
-                callback_data=f"add|{week}|{day_idx}|{hi}|p"
-            ))
+            if p:
+                row.append(InlineKeyboardButton(
+                    f"✕ 🔴 {p[:14]}",
+                    callback_data=f"del|{week}|{day_idx}|{hi}|p"
+                ))
+            else:
+                row.append(InlineKeyboardButton(
+                    "✅ + Напарник",
+                    callback_data=f"add|{week}|{day_idx}|{hi}|p"
+                ))
 
         buttons.append(row)
 
@@ -144,7 +159,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"Привіт, {name}! 👋\n\n"
         f"Бот для графіку служіння зі стендом.\n"
-        f"🔴 — зайнято   ✅ — вільно (натисни щоб записатись)   ✕ — видалити",
+        f"🔴 — зайнято   ✅ — вільно   ✕ — видалити\n"
+        f"🔒 — минулий день (тільки перегляд)",
         reply_markup=main_kb()
     )
 
@@ -170,6 +186,9 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if parts[0] == "del":
         _, week, day, hour, field = parts
+        if is_past_day(week, int(day)):
+            await q.answer("🔒 Цей день вже минув — редагування недоступне", show_alert=True)
+            return
         monday = get_monday_by_week(week)
         set_cell(monday, int(day), int(hour), field, "")
         text, kb = build_day_view(week, int(day))
@@ -178,6 +197,9 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if parts[0] == "add":
         _, week, day, hour, field = parts
+        if is_past_day(week, int(day)):
+            await q.answer("🔒 Цей день вже минув — редагування недоступне", show_alert=True)
+            return
         field_name = "відповідального" if field == "r" else "напарника"
         context.user_data["pending"] = {
             "week": week, "day": int(day),
@@ -208,6 +230,12 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     day = pending["day"]
     hour = pending["hour"]
     field = pending["field"]
+
+    if is_past_day(week, day):
+        context.user_data.pop("pending", None)
+        await update.message.reply_text("🔒 Цей день вже минув — редагування недоступне.", reply_markup=main_kb())
+        return
+
     monday = get_monday_by_week(week)
     set_cell(monday, day, hour, field, name)
     context.user_data.pop("pending", None)
