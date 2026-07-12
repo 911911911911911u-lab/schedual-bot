@@ -325,5 +325,5 @@ def main():
     print("Бот запущено!")
     app.run_polling(drop_pending_updates=True)
 
-if name == "main":
+if __name__ == "__main__":
     main()
