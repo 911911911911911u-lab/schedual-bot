@@ -298,6 +298,25 @@ async def schedule_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text, reply_markup=kb)
 
 def main():
+    # --- Блок для обмана Render (запуск веб-порта) ---
+    import threading
+    import http.server
+    import socketserver
+
+    def run_fake_server():
+        PORT = 10000
+        Handler = http.server.SimpleHTTPRequestHandler
+        # Подавляем лишние логи сервера в консоли, чтобы не засорять экран
+        Handler.log_message = lambda *args: None 
+        try:
+            with socketserver.TCPServer(("", PORT), Handler) as httpd:
+                httpd.serve_forever()
+        except Exception:
+            pass
+
+    threading.Thread(target=run_fake_server, daemon=True).start()
+    # ------------------------------------------------
+
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("schedule", schedule_cmd))
@@ -306,5 +325,5 @@ def main():
     print("Бот запущено!")
     app.run_polling(drop_pending_updates=True)
 
-if __name__ == "__main__":
+if name == "main":
     main()
