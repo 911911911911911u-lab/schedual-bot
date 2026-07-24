@@ -301,46 +301,40 @@ import time
 import threading
 import http.server
 import socketserver
+import os
 
-# --- 1. Фейковый сервер для Render (вынесен отдельно) ---
+# --- 1. Фейковый сервер для Render ---
 def run_fake_server():
-    PORT = 10000
+    # Render автоматически задает порт в переменных окружения. Берем его, либо 10000.
+    PORT = int(os.environ.get("PORT", 10000))
     Handler = http.server.SimpleHTTPRequestHandler
-    Handler.log_message = lambda *args: None
+    Handler.log_message = lambda *args: None # Отключаем лишний спам в логах
     try:
         with socketserver.TCPServer(("", PORT), Handler) as httpd:
+            print(f"Веб-сервер запущен на порту {PORT} (для обхода проверок Render)")
             httpd.serve_forever()
     except Exception as e:
         print(f"Ошибка веб-сервера: {e}")
 
 # --- 2. Функция запуска самого Telegram-бота ---
 def main():
-    app = Application.builder().token(TOKEN).build()
-    
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("schedule", schedule_cmd))
-    app.add_handler(CallbackQueryHandler(button))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
-    
-    print("Бот запущен!")
-    app.run_polling(drop_pending_updates=True)
-
-# --- 3. Точка входа ---
-def main():
-    # 1. Создаем приложение бота
+    # Создаем приложение бота
     application = Application.builder().token(TOKEN).build()
-
-    # 2. Регистрируем обработчики команд
-    application.add_handler(CommandHandler("start", start))
     
-    # 3. Запускаем бот в режиме polling
+    # Регистрируем ВСЕ обработчики
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("schedule", schedule_cmd))
+    application.add_handler(CallbackQueryHandler(button))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
+    
+    # Запускаем бот в режиме polling
     print("Запуск бота...")
     application.run_polling(drop_pending_updates=True)
-    
-# --- Точка входа ---
+
+# --- 3. Точка входа ---
 if __name__ == "__main__":
     # Запускаем фейковый веб-сервер в отдельном потоке
     threading.Thread(target=run_fake_server, daemon=True).start()
 
-    # запускаем бота
+    # Запускаем самого бота
     main()
