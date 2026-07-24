@@ -297,33 +297,44 @@ async def schedule_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text, kb = build_day_view("this", di)
     await update.message.reply_text(text, reply_markup=kb)
 
+import time
+import threading
+import http.server
+import socketserver
+
+# --- 1. Фейковый сервер для Render (вынесен отдельно) ---
+def run_fake_server():
+    PORT = 10000
+    Handler = http.server.SimpleHTTPRequestHandler
+    Handler.log_message = lambda *args: None
+    try:
+        with socketserver.TCPServer(("", PORT), Handler) as httpd:
+            httpd.serve_forever()
+    except Exception as e:
+        print(f"Ошибка веб-сервера: {e}")
+
+# --- 2. Функция запуска самого Telegram-бота ---
 def main():
-    # --- Блок для обмана Render (запуск веб-порта) ---
-    import threading
-    import http.server
-    import socketserver
-
-    def run_fake_server():
-        PORT = 10000
-        Handler = http.server.SimpleHTTPRequestHandler
-        # Подавляем лишние логи сервера в консоли, чтобы не засорять экран
-        Handler.log_message = lambda *args: None 
-        try:
-            with socketserver.TCPServer(("", PORT), Handler) as httpd:
-                httpd.serve_forever()
-        except Exception:
-            pass
-
-    threading.Thread(target=run_fake_server, daemon=True).start()
-    # ------------------------------------------------
-
     app = Application.builder().token(TOKEN).build()
+    
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("schedule", schedule_cmd))
     app.add_handler(CallbackQueryHandler(button))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
-    print("Бот запущено!")
+    
+    print("Бот запущен!")
     app.run_polling(drop_pending_updates=True)
 
+# --- 3. Точка входа ---
 if __name__ == "__main__":
-    main()
+    # Запускаем веб-сервер в отдельном потоке РОВНО ОДИН РАЗ при старте приложения
+    threading.Thread(target=run_fake_server, daemon=True).start()
+    
+    # Бесконечный цикл перезапуска бота
+    while True:
+        try:
+            main()
+        except Exception as e:
+            print(f"Произошла ошибка: {e}")
+            print("Перезапуск бота через 5 секунд...")
+            time.sleep(5)
