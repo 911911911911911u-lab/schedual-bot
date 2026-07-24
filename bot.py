@@ -343,4 +343,4 @@ if __name__ == "__main__":
     threading.Thread(target=run_fake_server, daemon=True).start()
 
     # запускаем бота
-            main()
+    main()
