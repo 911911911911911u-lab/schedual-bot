@@ -337,11 +337,9 @@ def main():
     # 3. Запускаем бот в режиме polling
     print("Запуск бота...")
     application.run_polling(drop_pending_updates=True)
-
-
+    
 # --- Точка входа ---
-# --- Точка входа ---
-if __name__ == "__main__":
+if name __==__ "__main__":
     # Запускаем фейковый веб-сервер в отдельном потоке
     threading.Thread(target=run_fake_server, daemon=True).start()
 
@@ -354,9 +352,9 @@ if __name__ == "__main__":
             print(f"Произошла ошибка: {err_text}")
             
             if "Conflict" in err_text:
-                print("Найден второй запущенный бот! Ждем 10 секунд, пока Render выключит старый процесс...")
-                time.sleep(10)
-                sys.exit(1)
+                print("Обнаружен конфликт токенов (запущен второй процесс). Ждем завершения старого процесса...")
+                # Не выходим из программы, а просто ждем 30 секунд, давая Render убить старый контейнер
+                time.sleep(30)
             else:
                 print("Перезапуск бота через 5 секунд...")
                 time.sleep(5)
