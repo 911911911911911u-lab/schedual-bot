@@ -331,10 +331,14 @@ if __name__ == "__main__":
     threading.Thread(target=run_fake_server, daemon=True).start()
     
     # Бесконечный цикл перезапуска бота
-    while True:
-        try:
-            main()
-        except Exception as e:
-            print(f"Произошла ошибка: {e}")
+   while True:
+    try:
+        main()
+    except Exception as e:
+        print(f"Произошла ошибка: {e}")
+        if "Conflict" in str(e):
+            print("Конфликт процессов! Ждем 30 секунд для смены контейнера...")
+            time.sleep(30)
+        else:
             print("Перезапуск бота через 5 секунд...")
             time.sleep(5)
