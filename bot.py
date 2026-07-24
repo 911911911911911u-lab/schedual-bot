@@ -326,19 +326,33 @@ def main():
     app.run_polling(drop_pending_updates=True)
 
 # --- 3. Точка входа ---
-if __name__ == "__main__":
-    # Запускаем веб-сервер в отдельном потоке РОВНО ОДИН РАЗ при старте приложения
-    threading.Thread(target=run_fake_server, daemon=True).start()
+def main():
+    """Основная функция запуска бота"""
+    # 1. Создаем приложение бота
+    application = Application.builder().token(TOKEN).build()
+
+    # 2. Регистрируем обработчики команд
+    application.add_handler(CommandHandler("start", start))
     
-    # Бесконечный цикл перезапуска бота
-   while True:
-    try:
-        main()
-    except Exception as e:
-        print(f"Произошла ошибка: {e}")
-        if "Conflict" in str(e):
-            print("Конфликт процессов! Ждем 30 секунд для смены контейнера...")
-            time.sleep(30)
-        else:
-            print("Перезапуск бота через 5 секунд...")
-            time.sleep(5)
+    # 3. Запускаем бот в режиме polling
+    print("Запуск бота...")
+    application.run_polling(drop_pending_updates=True)
+
+
+# --- Точка входа ---
+if name == "main":
+    # Запускаем фейковый веб-сервер в отдельном потоке
+    threading.Thread(target=run_fake_server, daemon=True).start()
+
+    # Цикл автоматического восстановления при сбоях
+    while True:
+        try:
+            main()
+        except Exception as e:
+            print(f"Произошла ошибка: {e}")
+            if "Conflict" in str(e):
+                print("Конфликт токена! Завершаем процесс...")
+                sys.exit(1)
+            else:
+                print("Перезапуск бота через 5 секунд...")
+                time.sleep(5)
