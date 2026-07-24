@@ -340,7 +340,7 @@ def main():
 
 
 # --- Точка входа ---
-if name == "main":
+if __name__ == "__main__":
     # Запускаем фейковый веб-сервер в отдельном потоке
     threading.Thread(target=run_fake_server, daemon=True).start()
 
