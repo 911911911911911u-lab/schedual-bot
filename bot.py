@@ -339,7 +339,7 @@ def main():
     application.run_polling(drop_pending_updates=True)
     
 # --- Точка входа ---
-if name __==__ "__main__":
+if __name__ == "__main__":
     # Запускаем фейковый веб-сервер в отдельном потоке
     threading.Thread(target=run_fake_server, daemon=True).start()
 
