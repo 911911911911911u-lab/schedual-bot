@@ -327,7 +327,6 @@ def main():
 
 # --- 3. Точка входа ---
 def main():
-    """Основная функция запуска бота"""
     # 1. Создаем приложение бота
     application = Application.builder().token(TOKEN).build()
 
@@ -343,18 +342,5 @@ if __name__ == "__main__":
     # Запускаем фейковый веб-сервер в отдельном потоке
     threading.Thread(target=run_fake_server, daemon=True).start()
 
-    # Цикл автоматического восстановления
-    while True:
-        try:
+    # запускаем бота
             main()
-        except Exception as e:
-            err_text = str(e)
-            print(f"Произошла ошибка: {err_text}")
-            
-            if "Conflict" in err_text:
-                print("Обнаружен конфликт токенов (запущен второй процесс). Ждем завершения старого процесса...")
-                # Не выходим из программы, а просто ждем 30 секунд, давая Render убить старый контейнер
-                time.sleep(30)
-            else:
-                print("Перезапуск бота через 5 секунд...")
-                time.sleep(5)
