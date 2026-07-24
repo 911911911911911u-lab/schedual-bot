@@ -340,19 +340,26 @@ def main():
 
 
 # --- Точка входа ---
+# --- Точка входа ---
 if __name__ == "__main__":
     # Запускаем фейковый веб-сервер в отдельном потоке
     threading.Thread(target=run_fake_server, daemon=True).start()
 
-    # Цикл автоматического восстановления при сбоях
+    # Цикл автоматического восстановления
     while True:
         try:
             main()
         except Exception as e:
-            print(f"Произошла ошибка: {e}")
-            if "Conflict" in str(e):
-                print("Конфликт токена! Завершаем процесс...")
+            err_text = str(e)
+            print(f"Произошла ошибка: {err_text}")
+            
+            if "Conflict" in err_text:
+                print("Найден второй запущенный бот! Ждем 10 секунд, пока Render выключит старый процесс...")
+                time.sleep(10)
                 sys.exit(1)
+            else:
+                print("Перезапуск бота через 5 секунд...")
+                time.sleep(5)
             else:
                 print("Перезапуск бота через 5 секунд...")
                 time.sleep(5)
