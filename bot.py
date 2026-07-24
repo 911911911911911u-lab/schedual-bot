@@ -7,7 +7,7 @@ from telegram.ext import (
     ContextTypes, MessageHandler, filters
 )
 
-TOKEN = os.environ.get("BOT_TOKEN", "8810579160:AAF-YCvLwffW2Tx7dL-PuJ_PyVEhNbknIW0")
+TOKEN = os.environ.get("BOT_TOKEN", "8810579160:AAEIxKL4aI7D83VSWKS8XKaEz7mspGGjKIM")
 DATA_FILE = "schedule_data.json"
 
 HOURS = [f"{9+i}:00–{10+i}:00" for i in range(10)]
